@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const redent = require('redent');
+const redent = require('redent').default;
 const { expect } = require('chai');
 const exec = require('child_process').exec;
 

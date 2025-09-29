@@ -160,8 +160,8 @@ describe('scripts', () => {
 
   describe('Svelte', () => {
     test(['x.svelte', '<script>export let foo = null;</script>{{foo}}'], result => {
-      expect(result.source).to.contain('SvelteComponent');
-      expect(result.source).to.contain('foo: 0');
+      expect(result.source).to.contain('default function X');
+      expect(result.source).to.contain('foo: foo()');
       expect(result.extension).to.eql('js');
     });
   });
