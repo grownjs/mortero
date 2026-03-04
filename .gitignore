@@ -2,6 +2,7 @@
 *.tgz
 dist
 build
+.journal
 bin/lib.js
 bin/cli.js
 cache.json

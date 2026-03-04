@@ -316,10 +316,11 @@ describe('modules', () => {
   });
 
   test(['should load from remote urls when bundling', 'x.bundle.js', `
-    import jsf from 'https://esm.sh/json-schema-faker';
-    console.log(jsf.generate({ type: 'string' }));
+    import dayjs from 'https://esm.sh/dayjs';
+    console.log(dayjs('2020-01-01').format('YYYY'));
   `], result => {
-    expect(result.source).to.contains('alwaysFakeOptionals');
+    expect(result.source).to.contains('http-url:https://esm.sh/dayjs');
+    expect(result.source).to.contains('2020-01-01');
   });
 });
 
