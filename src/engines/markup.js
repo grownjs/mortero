@@ -1,6 +1,61 @@
+const { pathToFileURL } = require('url');
 const { dirname, joinPath } = require('../common');
 
 const Source = require('../source');
+
+const KNOWN_HIGHLIGHTERS = new Set([
+  'highlight.js',
+  'pygmentize-bundled',
+  'rainbow-code',
+  'shiki',
+]);
+
+function resolveModule(mod, filepath, cwd) {
+  try {
+    return require.resolve(mod, {
+      paths: [dirname(filepath), cwd, process.cwd()],
+    });
+  } catch (_) {
+    return null;
+  }
+}
+
+async function loadModule(mod, filepath, cwd) {
+  const resolved = resolveModule(mod, filepath, cwd);
+  if (!resolved) {
+    return null;
+  }
+
+  try {
+    return require(resolved);
+  } catch (error) {
+    if (error && error.code === 'ERR_REQUIRE_ESM') {
+      return import(pathToFileURL(resolved).href);
+    }
+    throw error;
+  }
+}
+
+async function configureHighlighter(mod, hi, params, opts) {
+  const result = await loadModule(mod, params.filepath, params.options.cwd);
+  if (!result) {
+    return false;
+  }
+
+  const setup = result.default || result;
+  if (typeof setup !== 'function') {
+    throw new Error(`Highlight config module "${mod}" must export a function`);
+  }
+
+  const highlighter = require(hi);
+  await Promise.resolve(setup(highlighter, {
+    ...opts,
+    filepath: params.filepath,
+    source: params.source,
+  }));
+
+  return true;
+}
 
 // taken from coffee-script source
 function fixLiterate(code) {
@@ -58,9 +113,22 @@ function markdown(params, next) {
     };
 
     const opts = { ...params.options.kramed, renderer };
-    const hi = typeof opts.highlight === 'string'
-      ? opts.highlight
+    const userHighlight = opts.highlight;
+
+    let hi = typeof opts.highlighter === 'string'
+      ? opts.highlighter
       : 'highlight.js';
+    let configModule;
+
+    if (typeof userHighlight === 'string') {
+      if (KNOWN_HIGHLIGHTERS.has(userHighlight)) {
+        hi = userHighlight;
+      } else if (resolveModule(userHighlight, params.filepath, params.options.cwd)) {
+        configModule = userHighlight;
+      } else {
+        hi = userHighlight;
+      }
+    }
 
     if (opts.highlight && typeof opts.highlight !== 'function') {
       opts.highlight = (code, lang, end) => {
@@ -72,14 +140,24 @@ function markdown(params, next) {
       };
     }
 
-    kramed(params.source, opts, (err, content) => {
-      const className = hi === 'highlight.js' ? 'hljs' : hi;
+    Promise.resolve()
+      .then(() => {
+        if (configModule) {
+          return configureHighlighter(configModule, hi, params, opts);
+        }
+        return null;
+      })
+      .then(() => {
+        kramed(params.source, opts, (err, content) => {
+          const className = hi === 'highlight.js' ? 'hljs' : hi;
 
-      if (!err) params.source = content.replace(/<pre>/g, `<pre class="${className}">`);
-      next(err
-        ? new Error(`Unable to run ${hi}: ${err.message || err.toString()}`)
-        : null);
-    });
+          if (!err) params.source = content.replace(/<pre>/g, `<pre class="${className}">`);
+          next(err
+            ? new Error(`Unable to run ${hi}: ${err.message || err.toString()}`)
+            : null);
+        });
+      })
+      .catch(next);
   }
 }
 
